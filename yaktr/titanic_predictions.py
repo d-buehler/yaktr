@@ -2,10 +2,10 @@
 
 import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier
-from imputer import DataFrameImputer
+from imputer import BasicImputer, AdvancedImputer
 from optparse import OptionParser
 
-def import_dataset(dataset_name):
+def import_dataset(dataset_name, imputer_type='basic'):
 	'''
 	Loads a dataset from ../data, given the dataset filename.
 	Returns a pandas DataFrame.
@@ -29,10 +29,12 @@ def import_dataset(dataset_name):
 	#df = df.dropna()
 
 	# Impute missing values
-	df_t = DataFrameImputer().fit_transform(df)
-	
+	if imputer_type == 'advanced':
+		df = AdvancedImputer().fit_transform(df)
+	else:
+		df = BasicImputer().fit_transform(df)
 
-	return df_t
+	return df
 
 def import_answers():
 	'''
@@ -120,23 +122,23 @@ def df_to_arrays(df, y_col_name):
 	return x_arr, y_arr
 
 
-def load_training_data(debug=False):
+def load_training_data(debug=False, imputer_type='basic'):
 	'''
 	Loads the raw training dataset and transforms it. Returns the transformed training dataset.
 	'''
-	raw_train_df = import_dataset('train.csv')
+	print("Using {} imputation method".format(imputer_type))
+	raw_train_df = import_dataset('train.csv', imputer_type=imputer_type)
 	train_df = prep_training_data(raw_train_df, debug=debug)
-
 	return train_df
 
-def load_test_data(training_features, debug=False):
+def load_test_data(training_features, debug=False, imputer_type='basic'):
 	'''
 	Loads and transforms the test dataset. Returns the transformed test dataset.
 	:param training_features: list of the features in the final training dataset, used
 		to determine which features to include in the final test dataset
 	:param debug: True -> print more stuff
 	'''
-	raw_test_df = import_dataset('test.csv')
+	raw_test_df = import_dataset('test.csv', imputer_type=imputer_type)
 	test_df = prep_test_data(raw_test_df, training_features=training_features, debug=debug)
 
 	if debug == True:
@@ -235,18 +237,22 @@ if __name__ == '__main__':
 		action="store_true",
 		default=False,
 		help="Use this option to produce a submission file for Kaggle. Default is False.")
+	parser.add_option("--imputer-type",
+		dest='imputer_type',
+		default='basic',
+		help='Type of imputation to use for training and test datasets')
 	(options, args) = parser.parse_args()
 
 	debug = options.debug_mode
 	produce_submission_file = options.produce_file
-
+	imputer_type = options.imputer_type
 
 	y_name = 'Survived'
-	train_df = load_training_data(debug=debug)
+	train_df = load_training_data(debug=debug, imputer_type=imputer_type)
 	X, Y = df_to_arrays(train_df, y_col_name=y_name)
 
 	training_features = [ col for col in train_df.columns if col != 'Survived' ]
-	test_df = load_test_data(training_features, debug=debug)
+	test_df = load_test_data(training_features, debug=debug, imputer_type=imputer_type)
 
 	# GBC
 	print ("\n\nClassifier: GBC")

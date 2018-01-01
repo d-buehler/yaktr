@@ -1,12 +1,18 @@
-# Shamelessly stolen from StackOverflow: https://stackoverflow.com/questions/25239958/impute-categorical-missing-values-in-scikit-learn
 
 import pandas as pd
 import numpy as np
-
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingRegressor
 from sklearn.base import TransformerMixin
 
-class DataFrameImputer(TransformerMixin):
+REGRESSION_COLUMNS = ['Age', 'Fare', ]
+CLASSIFICATION_COLUMNS = ['Pclass', 'Sex', 'SibSp', 'Parch', 'Cabin', 'Embarked']
 
+# Shamelessly stolen from StackOverflow: https://stackoverflow.com/questions/25239958/impute-categorical-missing-values-in-scikit-learn
+class BasicImputer(TransformerMixin):
+    '''
+    Shamelessly stolen from StackOverflow, renamed, and modified in other class(es?) below
+    https://stackoverflow.com/questions/25239958/impute-categorical-missing-values-in-scikit-learn
+    '''
     def __init__(self):
         """Impute missing values.
 
@@ -26,3 +32,216 @@ class DataFrameImputer(TransformerMixin):
 
     def transform(self, X, y=None):
         return X.fillna(self.fill)
+
+class AdvancedImputer(TransformerMixin):
+    def __init__(self):
+        """Impute missing values.
+
+        Columns of dtype object are imputed using
+        a gradient boosting classifier to determine 
+        the most likely value for missing values
+
+        Columns of other types are imputed with mean of column.
+        """
+
+
+    @staticmethod
+    def transform_X_est(est_X_df, training_features):
+        '''
+        '''
+        est_X_df_t = pd.get_dummies(est_X_df)
+        for feature in training_features:
+            if (feature not in est_X_df_t.columns):
+                est_X_df_t[feature] = 0
+
+
+        test_features = est_X_df_t.columns
+        for feature in test_features:
+            if (feature not in training_features):
+                est_X_df_t = est_X_df_t.drop(feature, axis=1)
+        # Ensure the same column order
+        est_X_df_t = est_X_df_t[training_features]
+
+        return est_X_df_t
+
+
+
+    @staticmethod
+    def transform_X_train (X_df):
+        '''
+        '''
+        final_X_for_est = pd.get_dummies(X_df, drop_first=True)
+        return final_X_for_est
+
+    @staticmethod
+    def transform_y_train(y, colname):
+        # build the map of the original y-names to y-codes,
+        #    only necessary for columns that will use a
+        #    classifier
+        if colname in CLASSIFICATION_COLUMNS:
+            y_names = sorted(set(y))
+            y_map = { y_name: y_code + 1 for y_code, y_name in enumerate(y_names) }
+            print("y_map: {}".format(y_map))
+            y_transformed = pd.Series([y_map[y_name] for y_name in y])
+        else:
+            y_map = None
+            y_transformed = y
+
+        return y_transformed, y_map
+
+    def get_imputing_model(self, train_X, train_y, colname):
+
+        train_X_t = self.transform_X_train(train_X)
+        train_y_t, y_map = self.transform_y_train(train_y, colname)
+        training_features = train_X_t.columns
+
+        train_X_t_arr = train_X_t.values
+        train_y_t_arr = train_y_t.values
+
+        model = RandomForestClassifier() if colname in CLASSIFICATION_COLUMNS else GradientBoostingRegressor()
+        print("Predicting with {}".format(type(model)))
+
+        model.fit(train_X_t_arr, train_y_t_arr)
+
+        return model, training_features, y_map
+
+    def get_predictions(self, model, X_est, training_features, y_map):
+        '''
+        '''
+        X_est_t = self.transform_X_est(X_est, training_features)
+        predictions_list = model.predict(X_est_t.values)
+
+        # If a y_map is passed, use it to map the predictions back
+        #    to their original values
+        if y_map is not None:
+            y_map_flipped = { v: k for k, v in  y_map.items() }
+            print(y_map_flipped.keys())
+            predictions = pd.Series([y_map_flipped[prediction] for prediction in predictions_list], index=X_est_t.index)
+        else:
+            predictions = pd.Series(predictions_list, index=X_est_t.index)
+
+        return predictions
+
+    def add_to_predictions_dict(self, predictions_series, col_name):
+        try:
+            print("Adding predictions for null values of {} to predictions_dict"
+                .format(col_name))
+            self.predictions_dict[col_name] = predictions_series
+        except:
+            print("No dict of predictions yet. Creating a new one.")
+            self.predictions_dict = {}
+            self.predictions_dict[col_name] = predictions_series
+
+
+    def fit(self, X, y=None):
+        
+        # Make a BasicImpute-d version of X - pull rows from this 
+        #    where col-to-impute is NOT NULL to create the model,
+        #    and use the model to estimate the value of col-to-impute
+        #    where it IS null in the original dataset
+        self.X_basic_impute = X.copy()
+        # Remove 'Survived' if it's in the dataset
+        try:
+            X_basic_impute.drop('Survived')
+        except:
+            print("No Survived column, moving on")
+        self.X_basic_impute = BasicImputer().fit_transform(self.X_basic_impute)
+
+        impute_columns = [ col for col in X.columns if col != 'Survived' ]
+        for impute_column in impute_columns:
+            print("Begin imputing {}".format(impute_column))
+
+            # Get a dataframe of all rows where the column we want
+            #    to impute is not null, and impute values for all
+            #    other columns in _that_ dataframe.
+            other_columns = [ c for c in X.columns if c is not impute_column ]
+            populated_rows = list(X[X[impute_column].notnull()].index)
+            rows_to_predict = list(X[X[impute_column].isnull()].index)
+            print("Other columns: {0}\nNr populated: {1}\nNr to predict: {2}"
+                .format(
+                    other_columns,
+                    len(populated_rows),
+                    len(rows_to_predict)
+                )
+            )
+
+            # If nothing to predict (no nulls), move on to the next column
+            if len(rows_to_predict) == 0:
+                print("Nothing to predict for {}, skipping".format(impute_column))
+                self.add_to_predictions_dict(X[impute_column].copy(), impute_column)
+                continue
+
+            # Rows where the column is populated in the original dataset,
+            #    Columns that are NOT the column we're estimating
+            this_X = self.X_basic_impute[other_columns].loc[populated_rows].copy()
+            this_y = X[impute_column].loc[populated_rows]
+
+            model, training_features, y_map = self.get_imputing_model(train_X=this_X, train_y=this_y, colname=impute_column)
+
+            # Only _need_ to predict y for values where it is null 
+            #    in the original dataset
+            est_y = self.get_predictions(model, 
+                                    self.X_basic_impute[other_columns].loc[rows_to_predict], 
+                                    training_features,
+                                    y_map)
+
+            self.add_to_predictions_dict(est_y, impute_column)
+
+        if 'Survived' in X.columns:
+            self.predictions_dict['Survived'] = X['Survived'].copy()
+
+        return self
+
+    def transform(self, X, y=None):
+        # Similar to joining on the index, and creating a column
+        #    like... coalesce(X.col, est_y.col)
+        X_transformed = pd.DataFrame(columns=X.columns)
+        for col in self.predictions_dict.keys():
+            X_transformed[col] = X[col].combine_first(self.predictions_dict[col])
+        return X_transformed
+
+
+
+
+# First attempt at AdvancedImputer. Didn't get very far,
+#    but I don't think this is the right way to go
+# class DatasetColumn(object):
+#     '''Just used for est, class for columns dataset whose values you're est'''
+#     est_METHODS = ['mean', 'most_frequent', 'gbc', 'gbr']
+
+#     def __init__(self, try_to_impute=False, impute_method='most_frequent', use_to_predict_other=False):
+#         '''
+#         :param try_to_impute: should this column be imputed or not
+#         :param impute_method: method to use to impute nulls in this column
+#         :param use_to_predict_other: should this column be used to predict null values in other columns in the dataset
+#         '''
+        
+#         self.try_to_impute = try_to_impute
+#         self.impute_type = impute_type
+#         self.use_to_predict_other = use_to_predict_other
+
+# class AdvancedImputer(TransformerMixin):
+#     def __init__(self, est_map):
+#         """Impute missing values.
+
+#         Columns of dtype object are imputed using
+#         a gradient boosting classifier to determine 
+#         the most likely value for missing values
+
+#         Columns of other types are imputed with mean of column.
+        
+#         :param est_map: list of DatasetColumn-s that corresponds to the columns in the dataset you'd like to impute
+#         """
+#         self.est_map = est_map
+
+
+#     def fit(self, X, y=None):
+
+#         self.fill = pd.Series([X[c].value_counts().index[0]
+#             if X[c].dtype == np.dtype('O') else X[c].mean() for c in X],
+#             index=X.columns)
+
+#         return self
+
+#     def transform(self, X, y=None):
+#         return X.fillna(self.fill)
