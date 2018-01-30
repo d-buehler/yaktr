@@ -33,6 +33,7 @@ class BasicImputer(TransformerMixin):
     def transform(self, X, y=None):
         return X.fillna(self.fill)
 
+# Created myself, uses the above BasicImputer
 class AdvancedImputer(TransformerMixin):
     def __init__(self):
         """Impute missing values.
