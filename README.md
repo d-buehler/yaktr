@@ -1,6 +1,17 @@
 # yaktr
 ### Yet another Kaggle Titanic repo
 
+## Setup
+Setup requires virtualenv to be installed:
+```bash
+[your-shell]$ pip install virtualenv
+```
+
+Run setup.sh: Creates an environment (./env) and installs dependencies
+```bash
+[your-shell]$ setup.sh
+```
+
 ## Data
 Download from https://www.kaggle.com/c/titanic/data to the data/ directory
 
