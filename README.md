@@ -43,6 +43,4 @@ optional arguments:
 ```
 
 ## Submissions
-First attempt, Gradient boosting, minimal/almost no feature engineering: 0.77511
-
 ![Basic and Advanced scores](https://user-images.githubusercontent.com/7842856/35792150-ae70ad3a-0a19-11e8-9e4f-85d078abbf8a.jpg)
