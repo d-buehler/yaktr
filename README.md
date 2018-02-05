@@ -45,4 +45,4 @@ optional arguments:
 ## Submissions
 First attempt, Gradient boosting, minimal/almost no feature engineering: 0.77511
 
-![First attempt, gradient boosting classification with minimal feature engineering](https://user-images.githubusercontent.com/5957624/31588668-6e69c7de-b1c3-11e7-8a1b-f2df0c10c6f8.jpg)
+![Basic and Advanced scores](https://user-images.githubusercontent.com/7842856/35792150-ae70ad3a-0a19-11e8-9e4f-85d078abbf8a.jpg)
