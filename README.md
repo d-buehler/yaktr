@@ -17,6 +17,9 @@ Data from https://www.kaggle.com/c/titanic/data available in the data/ directory
 
 ## Usage
 ```bash
+[~/Documents/github/yaktr]$ pwd
+/Users/dbuehler720/Documents/github/yaktr
+[~/Documents/github/yaktr]$ source env/bin/activate
 (env) [~/Documents/github/yaktr]$ python titanic_predictions.py --help
 usage: titanic_predictions.py [-h] [--debug]
                               [--output-filename OUTPUT_FILENAME]
