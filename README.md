@@ -15,6 +15,30 @@ Run setup.sh: Creates an environment (./env) and installs dependencies
 ## Data
 Data from https://www.kaggle.com/c/titanic/data available in the data/ directory
 
+## Usage
+```bash
+(env) [~/Documents/github/yaktr]$ python titanic_predictions.py --help
+usage: titanic_predictions.py [-h] [--debug]
+                              [--output-filename OUTPUT_FILENAME]
+                              [--imputer-type IMPUTER_TYPE]
+                              [--comparison-set COMPARISON_SET]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --debug               Use this option to print more messages as the script
+                        runs
+  --output-filename OUTPUT_FILENAME
+                        Name for the filename containing the submission file
+                        for Kaggle. Default is 'kaggle_submission.csv'.
+  --imputer-type IMPUTER_TYPE
+                        Type of imputation to use for training and test
+                        datasets. Pass "basic" or "advanced", defaults to
+                        basic if anything else is passed.
+  --comparison-set COMPARISON_SET
+                        Filename (fullpath) containing comparison set of
+                        output to compare this runs set with
+```
+
 ## Submissions
 First attempt, Gradient boosting, minimal/almost no feature engineering: 0.77511
 
