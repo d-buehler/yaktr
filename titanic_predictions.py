@@ -3,7 +3,7 @@
 import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier
 from imputer import BasicImputer, AdvancedImputer
-from optparse import OptionParser
+from argparse import ArgumentParser
 
 def import_dataset(dataset_name, imputer_type='basic'):
 	'''
@@ -22,25 +22,25 @@ def import_dataset(dataset_name, imputer_type='basic'):
 		cols_to_keep.remove('Survived')
 
 
-	df = pd.DataFrame.from_csv("../data/%s" % dataset_name)[cols_to_keep]
+	df = pd.DataFrame.from_csv("data/%s" % dataset_name)[cols_to_keep]
 	
 	# Don't do this. Need to impute missing values somehow, can't drop
 	# 	rows from the test dataset.
 	#df = df.dropna()
 
 	# Impute missing values
-	if imputer_type == 'advanced':
+	if imputer_type.lower() == 'advanced':
 		df = AdvancedImputer().fit_transform(df)
 	else:
 		df = BasicImputer().fit_transform(df)
 
 	return df
 
-def import_answers():
+def import_answers(comparison_set):
 	'''
 	Returns a dataframe with the true survived values for passengers in the test dataset
 	'''
-	answers_df = pd.DataFrame.from_csv("../data/gender_submission.csv")
+	answers_df = pd.DataFrame.from_csv(comparison_set)
 	return answers_df
 
 # TODO: More feature engineering
@@ -125,6 +125,8 @@ def df_to_arrays(df, y_col_name):
 def load_training_data(debug=False, imputer_type='basic'):
 	'''
 	Loads the raw training dataset and transforms it. Returns the transformed training dataset.
+	:param debug: True -> more printed stuff
+	:param imputer_type: Use the basic or advanced imputer to fill in missing values. Defaults to basic.
 	'''
 	print("Using {} imputation method".format(imputer_type))
 	raw_train_df = import_dataset('train.csv', imputer_type=imputer_type)
@@ -184,40 +186,39 @@ def predict_survival(classifier, test_data, prediction_col_name, debug=False):
 
 	return test_data
 
-# I think this might not be comparing to an actual answers dataset... gender_submission.csv might
+# Commented out because it doesn't seem super useful.
 # 	just be Kaggle's sample output from a really simple model... leaving as-is for now but should
 #	change/remove this later, maybe just produce the submission file
-def evaluate_predictions(test_df_with_predictions, y_hat, produce_file_for_kaggle=False):
+def evaluate_predictions(test_df_with_predictions, y_hat, comparison_set):
 	'''
-	Determines and prints the number and percentage of correct predictions
-		in the provided test dataset
+	Compares answers datasets. Prints number of same answers and number of different answers,
+		with percentages
 	:param test_df_with_predictions: test dataset with a column containing the predictions
 	:param y_hat: prediction of survival (1 or 0)
+	:param comparison_set: set of survival predictions to compare this run's predictions with
 	'''
-	answers_df = import_answers()
+	answers_df = import_answers(comparison_set)
 	nr_test_passengers = len(answers_df)
-	nr_correct = 0
-	nr_incorrect = 0
+	nr_same = 0
+	nr_different = 0
 	for pid, _ in answers_df.iterrows():
 		if test_df_with_predictions.loc[pid][y_hat] == answers_df.loc[pid]['Survived']:
-			nr_correct += 1
+			nr_same += 1
 		else:
-			nr_incorrect += 1
+			nr_different += 1
 
-	pct_correct = (nr_correct / nr_test_passengers) * 100.0
-	print ("Correct: {0}\nIncorrect: {1}\nPercent correct: {2:.2f}%"
-		.format(nr_correct, nr_incorrect, pct_correct))
+	pct_same = (nr_same / nr_test_passengers) * 100.0
+	print ("Same: {0}\nDifferent: {1}\nPercent Same: {2:.2f}%\nCompared to: {3}\n!!! DOES NOT CORRESPOND TO KAGGLE SCORE !!!"
+		.format(nr_same, nr_different, pct_same, comparison_set))
 
-	if produce_file_for_kaggle:
-		produce_kaggle_file(test_df_with_predictions=test_df_with_predictions, y_hat=y_hat)
 
-def produce_kaggle_file(test_df_with_predictions, y_hat):
+def produce_kaggle_file(test_df_with_predictions, y_hat, output_name):
 	'''
 	Produces a file named kaggle_submission.csv to submit to Kaggle's Titanic competition
 	:param test_df_with_predictions: test dataset with a column containing the predictions
 	'''
 	header = "PassengerId,Survived\n"
-	with open("kaggle_submission.csv", "w") as f:
+	with open(output_name, "w") as f:
 		f.write(header)
 		for pid, _ in test_df_with_predictions.iterrows():
 			line = '{passenger_id},{survival_prediction:.0f}\n'.format(passenger_id=pid, survival_prediction=test_df_with_predictions.loc[pid][y_hat])
@@ -226,37 +227,40 @@ def produce_kaggle_file(test_df_with_predictions, y_hat):
 if __name__ == '__main__':
 	
 	# Parse command line args
-	parser = OptionParser()
-	parser.add_option("--debug", 
+	parser = ArgumentParser()
+	parser.add_argument("--debug", 
 		dest='debug_mode', 
 		action="store_true",
 		default=False,
 		help="Use this option to print more messages as the script runs")
-	parser.add_option("--produce-submission-file",
-		dest='produce_file',
-		action="store_true",
-		default=False,
-		help="Use this option to produce a submission file for Kaggle. Default is False.")
-	parser.add_option("--imputer-type",
+	parser.add_argument("--output-filename",
+		dest='output_filename',
+		default='kaggle_submission.csv',
+		help="Name for the filename containing the submission file for Kaggle. Default is 'kaggle_submission.csv'.")
+	parser.add_argument("--imputer-type",
 		dest='imputer_type',
 		default='basic',
-		help='Type of imputation to use for training and test datasets')
-	(options, args) = parser.parse_args()
-
-	debug = options.debug_mode
-	produce_submission_file = options.produce_file
-	imputer_type = options.imputer_type
+		help='Type of imputation to use for training and test datasets. Pass "basic" or "advanced", defaults to basic if anything else is passed.')
+	parser.add_argument("--comparison-set",
+		dest='comparison_set',
+		default="data/gender_submission.csv",
+		help='Filename (fullpath) containing comparison set of output to compare this run''s set with')
+	args = parser.parse_args()
 
 	y_name = 'Survived'
-	train_df = load_training_data(debug=debug, imputer_type=imputer_type)
+	train_df = load_training_data(debug=args.debug_mode, imputer_type=args.imputer_type)
 	X, Y = df_to_arrays(train_df, y_col_name=y_name)
 
 	training_features = [ col for col in train_df.columns if col != 'Survived' ]
-	test_df = load_test_data(training_features, debug=debug, imputer_type=imputer_type)
+	test_df = load_test_data(training_features, debug=args.debug_mode, imputer_type=args.imputer_type)
 
 	# GBC
 	print ("\n\nClassifier: GBC")
 	y_hat_name = 'prediction_GBC'
 	classifier = train_classifier(X, Y, type='GBC')
-	test_df = predict_survival(classifier=classifier, test_data=test_df, prediction_col_name=y_hat_name ,debug=debug)
-	evaluate_predictions(test_df_with_predictions=test_df, y_hat=y_hat_name, produce_file_for_kaggle=produce_submission_file)
+	test_df = predict_survival(classifier=classifier, test_data=test_df, prediction_col_name=y_hat_name ,debug=args.debug_mode)
+	try:
+		evaluate_predictions(test_df_with_predictions=test_df, y_hat=y_hat_name, comparison_set=args.comparison_set)
+	except Exception as e:
+		print("Error while evaluating predictions: {}".format(e))
+	produce_kaggle_file(test_df_with_predictions=test_df, y_hat=y_hat_name, output_name=args.output_filename)

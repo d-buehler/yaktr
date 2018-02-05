@@ -1,13 +1,13 @@
 
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingRegressor
+from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
 from sklearn.base import TransformerMixin
 
-REGRESSION_COLUMNS = ['Age', 'Fare', ]
+REGRESSION_COLUMNS = ['Age', 'Fare']
 CLASSIFICATION_COLUMNS = ['Pclass', 'Sex', 'SibSp', 'Parch', 'Cabin', 'Embarked']
 
-# Shamelessly stolen from StackOverflow: https://stackoverflow.com/questions/25239958/impute-categorical-missing-values-in-scikit-learn
+# BasicImputer is shamelessly stolen from StackOverflow: https://stackoverflow.com/questions/25239958/impute-categorical-missing-values-in-scikit-learn
 class BasicImputer(TransformerMixin):
     '''
     Shamelessly stolen from StackOverflow, renamed, and modified in other class(es?) below
@@ -33,7 +33,10 @@ class BasicImputer(TransformerMixin):
     def transform(self, X, y=None):
         return X.fillna(self.fill)
 
-# Created myself, uses the above BasicImputer
+# Created AdvancedImputer myself, uses the above BasicImputer as a basic template. _Slight_ improvement
+#   on score vs. BasicImputer :-D
+#   As called in titanic_predictions.py (using fit_transform()) - the fit() method is called first, 
+#   then the transform() method.
 class AdvancedImputer(TransformerMixin):
     def __init__(self):
         """Impute missing values.
@@ -42,13 +45,18 @@ class AdvancedImputer(TransformerMixin):
         a gradient boosting classifier to determine 
         the most likely value for missing values
 
-        Columns of other types are imputed with mean of column.
+        Columns of other types are imputed using a 
+        gradient boosting regressor.
         """
 
 
     @staticmethod
     def transform_X_est(est_X_df, training_features):
         '''
+        Dummy-ifies columns in the estimation dataset (dataset where values need to be imputed),
+            adds columns if they exist in the dummy-ified training dataset but not the estimation
+            datset, and removes columns if they exist in the estimation dataset but not the training
+            datset.
         '''
         est_X_df_t = pd.get_dummies(est_X_df)
         for feature in training_features:
@@ -70,15 +78,17 @@ class AdvancedImputer(TransformerMixin):
     @staticmethod
     def transform_X_train (X_df):
         '''
+        Dummy-ifies columns in the training dataset
         '''
         final_X_for_est = pd.get_dummies(X_df, drop_first=True)
         return final_X_for_est
 
     @staticmethod
     def transform_y_train(y, colname):
-        # build the map of the original y-names to y-codes,
-        #    only necessary for columns that will use a
-        #    classifier
+        '''
+         Builds the map of the original y-names to y-codes and uses this map to encode the y values in
+            the training dataset, only necessary for columns that will use a classifier
+        '''
         if colname in CLASSIFICATION_COLUMNS:
             y_names = sorted(set(y))
             y_map = { y_name: y_code + 1 for y_code, y_name in enumerate(y_names) }
@@ -91,7 +101,11 @@ class AdvancedImputer(TransformerMixin):
         return y_transformed, y_map
 
     def get_imputing_model(self, train_X, train_y, colname):
-
+        '''
+        Trains a RandomForestClassifier or a GradientBoostingRegressor to use for estimating missing values
+            in a column. Which column is getting a model generated is determined when calling the function
+            (train_Y = [the variable to create a model for imputing], train_X = [other independent variables])
+        '''
         train_X_t = self.transform_X_train(train_X)
         train_y_t, y_map = self.transform_y_train(train_y, colname)
         training_features = train_X_t.columns
@@ -99,7 +113,7 @@ class AdvancedImputer(TransformerMixin):
         train_X_t_arr = train_X_t.values
         train_y_t_arr = train_y_t.values
 
-        model = RandomForestClassifier() if colname in CLASSIFICATION_COLUMNS else GradientBoostingRegressor()
+        model = GradientBoostingClassifier() if colname in CLASSIFICATION_COLUMNS else GradientBoostingRegressor()
         print("Predicting with {}".format(type(model)))
 
         model.fit(train_X_t_arr, train_y_t_arr)
@@ -108,6 +122,9 @@ class AdvancedImputer(TransformerMixin):
 
     def get_predictions(self, model, X_est, training_features, y_map):
         '''
+        Returns a pd.Series of predictions using the trained model and the subset
+            of rows that require predictions for this column (meaning - the subset
+            of rows where the column being predicted is null in the original dataset)
         '''
         X_est_t = self.transform_X_est(X_est, training_features)
         predictions_list = model.predict(X_est_t.values)
@@ -124,6 +141,10 @@ class AdvancedImputer(TransformerMixin):
         return predictions
 
     def add_to_predictions_dict(self, predictions_series, col_name):
+        '''
+        Adds the predictions for [col_name] to the dict of predictions - to be
+            used later to impute missing values into the original dataset
+        '''
         try:
             print("Adding predictions for null values of {} to predictions_dict"
                 .format(col_name))
@@ -135,6 +156,13 @@ class AdvancedImputer(TransformerMixin):
 
 
     def fit(self, X, y=None):
+        '''
+        Builds a dictionary of predictions for null values of each column in the X dataset,
+            using sklearn classifiers/regression models (depending on if the data type being
+            imputed is categorical or numerical, respectively).
+            
+            Dict is of the form... { col_name: pd.Series of predictions }
+        '''
         
         # Make a BasicImpute-d version of X - pull rows from this 
         #    where col-to-impute is NOT NULL to create the model,
@@ -194,6 +222,9 @@ class AdvancedImputer(TransformerMixin):
         return self
 
     def transform(self, X, y=None):
+        '''
+        Returns a dataframe containing filled-in missing values using predicted values
+        '''
         # Similar to joining on the index, and creating a column
         #    like... coalesce(X.col, est_y.col)
         X_transformed = pd.DataFrame(columns=X.columns)
